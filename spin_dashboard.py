@@ -1262,3 +1262,197 @@ with tab8:
     st.info(
         "💡 **Lição-chave:** As reuniões que avançaram no funil tinham em média 3x mais perguntas de IMPLICAÇÃO (consequências) do que as reuniões travadas. O discurso de sucesso sempre termina com o cliente VISUALIZANDO o prejuízo que terá se não contratar agora."
     )
+
+# ================================
+# TAB 9: RESUMO EXECUTIVO
+# ================================
+with tab9:
+    st.subheader("📋 Resumo Executivo da Análise de Conversão")
+
+    # Métricas principais
+    total_meetings = len(df)
+    avancos = df["avancou_funil"].sum()
+    tx_conversao = (avancos / total_meetings) * 100 if total_meetings > 0 else 0
+    media_spin = df["SPIN_total"].mean()
+
+    st.markdown("### 🎯 Principais Indicadores de Performance")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total de Reuniões Analisadas", f"{total_meetings}")
+    col2.metric("Reuniões que Avançaram no Funil", f"{avancos}")
+    col3.metric("Taxa de Conversão Geral", f"{tx_conversao:.1f}%")
+    col4.metric("SPIN Score Médio", f"{media_spin:.1f}/10")
+
+    st.divider()
+
+    # Análise de performance por fase do SPIN
+    st.markdown("### 📊 Análise Detalhada por Fase do SPIN")
+
+    # Cálculo das médias por fase para reuniões bem-sucedidas vs malsucedidas
+    sucesso_df = df[df["avancou_funil"] == True]
+    fracasso_df = df[df["avancou_funil"] == False]
+
+    if len(sucesso_df) > 0 and len(fracasso_df) > 0:
+        col_s1, col_s2 = st.columns(2)
+
+        with col_s1:
+            st.markdown("#### ✅ Reuniões com Sucesso")
+            s_success = sucesso_df["S_score"].mean()
+            p_success = sucesso_df["P_score"].mean()
+            i_success = sucesso_df["I_score"].mean()
+            n_success = sucesso_df["N_score"].mean()
+
+            st.metric("Situação (S)", f"{s_success:.1f}/2")
+            st.metric("Problema (P)", f"{p_success:.1f}/3")
+            st.metric("Implicação (I)", f"{i_success:.1f}/3")
+            st.metric("Necessidade (N)", f"{n_success:.1f}/2")
+
+        with col_s2:
+            st.markdown("#### ❌ Reuniões sem Sucesso")
+            s_fail = fracasso_df["S_score"].mean()
+            p_fail = fracasso_df["P_score"].mean()
+            i_fail = fracasso_df["I_score"].mean()
+            n_fail = fracasso_df["N_score"].mean()
+
+            st.metric("Situação (S)", f"{s_fail:.1f}/2")
+            st.metric("Problema (P)", f"{p_fail:.1f}/3")
+            st.metric("Implicação (I)", f"{i_fail:.1f}/3")
+            st.metric("Necessidade (N)", f"{n_fail:.1f}/2")
+
+        # Diferenças percentuais
+        st.markdown("#### 📈 Diferença de Performance (Sucesso vs Falha)")
+        diff_s = ((s_success - s_fail) / max(s_fail, 0.1)) * 100 if s_fail > 0 else 100
+        diff_p = ((p_success - p_fail) / max(p_fail, 0.1)) * 100 if p_fail > 0 else 100
+        diff_i = ((i_success - i_fail) / max(i_fail, 0.1)) * 100 if i_fail > 0 else 100
+        diff_n = ((n_success - n_fail) / max(n_fail, 0.1)) * 100 if n_fail > 0 else 100
+
+        diff_col1, diff_col2, diff_col3, diff_col4 = st.columns(4)
+        diff_col1.metric("Situação", f"{diff_s:+.1f}%")
+        diff_col2.metric("Problema", f"{diff_p:+.1f}%")
+        diff_col3.metric("Implicação", f"{diff_i:+.1f}%")
+        diff_col4.metric("Necessidade", f"{diff_n:+.1f}%")
+    else:
+        st.info("Dados insuficientes para comparação entre sucesso e fracasso.")
+
+    st.divider()
+
+    # Insights estratégicos
+    st.markdown("### 💡 Insights Estratégicos")
+
+    insights_col1, insights_col2 = st.columns(2)
+
+    with insights_col1:
+        st.markdown("#### 🔑 Fatores Críticos de Sucesso")
+        if len(sucesso_df) > 0:
+            # Calcular percentual de reuniões com scores altos em cada dimensão
+            p_alto = (sucesso_df["P_score"] >= 2).sum() / len(sucesso_df) * 100
+            i_alto = (sucesso_df["I_score"] >= 2).sum() / len(sucesso_df) * 100
+            n_alto = (sucesso_df["N_score"] >= 1).sum() / len(sucesso_df) * 100
+
+            st.success(
+                f"**Identificação de Problemas Fortes:** {p_alto:.0f}% das reuniões bem-sucedidas identificaram problemas significativos (P_score ≥ 2)"
+            )
+            st.success(
+                f"**Pesagem de Consequências:** {i_alto:.0f}% das reuniões bem-sucedidas mostraram alta implicação (I_score ≥ 2)"
+            )
+            st.success(
+                f"**Need-Payoff Efetivo:** {n_alto:.0f}% das reuniões bem-sucedidas estabeleceram clara necessidade (N_score ≥ 1)"
+            )
+        else:
+            st.info("Dados de sucesso insuficientes para análise.")
+
+    with insights_col2:
+        st.markdown("#### ⚠️ Pontos de Atenção")
+        if len(fracasso_df) > 0:
+            # Calcular percentual de reuniões com scores baixos em cada dimensão
+            p_baixo = (fracasso_df["P_score"] < 1).sum() / len(fracasso_df) * 100
+            i_baixo = (fracasso_df["I_score"] < 1).sum() / len(fracasso_df) * 100
+            n_baixo = (fracasso_df["N_score"] < 1).sum() / len(fracasso_df) * 100
+
+            st.error(
+                f"**Falta de Identificação de Problemas:** {p_baixo:.0f}% das reuniões malsucedidas não identificaram problemas claros (P_score < 1)"
+            )
+            st.error(
+                f"**Ausência de Implicação:** {i_baixo:.0f}% das reuniões malsucedidas não pesaram consequências (I_score < 1)"
+            )
+            st.error(
+                f"**Need-Payoff Insuficiente:** {n_baixo:.0f}% das reuniões malsucedidas não estabeleceram necessidade clara (N_score < 1)"
+            )
+        else:
+            st.info("Dados de fracasso insuficientes para análise.")
+
+    st.divider()
+
+    # Recomendações executivas
+    st.markdown("### 🎯 Recomendações Executivas")
+
+    # Gerar recomendações baseadas na análise
+    if tx_conversao < 30:
+        priority = "ALTA"
+        priority_color = "error"
+        action_imediata = "Reestruturação completa do processo de vendas com foco imediato na fase de Implicação (I)"
+    elif tx_conversao < 50:
+        priority = "MÉDIA"
+        priority_color = "warning"
+        action_imediata = "Aprimoramento seletivo nas fases de Problema e Implicação"
+    else:
+        priority = "BAIXA"
+        priority_color = "success"
+        action_imediata = "Manutenção do atual processo com otimizações pontuais"
+
+    if priority_color == "error":
+        st.error(f"""
+        **🚨 PRIORIDADE {priority}:** Taxa de conversão abaixo de 30% requer intervenção imediata
+        """)
+    elif priority_color == "warning":
+        st.warning(f"""
+        **⚠️ PRIORIDADE {priority}:** Taxa de conversão entre 30-50% requer melhorias seletivas
+        """)
+    else:
+        st.success(f"""
+        **✅ PRIORIDADE {priority}:** Taxa de conversão acima de 50% - processo consolidado
+        """)
+
+    st.markdown(f"""
+    **🎯 Ação Imediata Recomendada:** {action_imediata}
+    
+    **📈 Metas de Melhoria:**
+    - Aumentar a taxa de conversão para ≥ 40% nos próximos 60 dias
+    - Elevar o I_score médio para ≥ 2.0 (de {df["I_score"].mean():.1f} atual)
+    - Reduzir o percentual de reuniões com P_score < 1 para ≤ 20%
+    
+    **👥 Capacitação da Equipe:**
+    - Treinamento focado na fase de Implicação (perguntas de consequência e risco)
+    - Roleplays semanais com foco em identificação e amplificação de dores
+    - Implementação do "Rule of 3": mínimo 3 perguntas de implicação após identificação de problema
+    
+    **📊 Monitoramento:**
+    - Acompanhamento semanal dos scores SPIN por agente
+    - Reuniões de calibração quinzenais para padronização de abordagem
+    - Dashboard de performance individual com metas de SPIN_score
+    """)
+
+    st.divider()
+
+    # Projeção de impacto
+    st.markdown("### 📈 Projeção de Impacto das Melhorias")
+
+    proj_col1, proj_col2 = st.columns(2)
+
+    with proj_col1:
+        st.info(
+            """
+        **Cenário Conservador (Melhoria de 20%)**
+        - Taxa de conversão projetada: {:.1f}%
+        - Aumento absoluto: +{:.1f}%
+        """.format(tx_conversao * 1.2, tx_conversao * 0.2)
+        )
+
+    with proj_col2:
+        st.success(
+            """
+        **Cenário Otimizado (Melhoria de 50%)**
+        - Taxa de conversão projetada: {:.1f}%
+        - Aumento absoluto: +{:.1f}%
+        """.format(tx_conversao * 1.5, tx_conversao * 0.5)
+        )
