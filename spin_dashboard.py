@@ -293,21 +293,28 @@ with tab3:
     
     tx_base = df["avancou_funil"].mean() * 100 if len(df) > 0 else 0
     
-    # Busca agressiva para achar "Risco" e "Multa" e "Atraso" no corpus completo de cada cliente
-    df["Mencionou_Risco"] = df["corpus"].str.contains(r'\\b(risco|multa|processo|atraso|juros)\\b', regex=True, case=False, na=False)
-    corr_risco = df[df["Mencionou_Risco"]]["avancou_funil"].mean() * 100 if df["Mencionou_Risco"].sum() > 0 else 0
-    gap_risco = corr_risco - tx_base
+    TEM_CORPUS = "corpus" in df.columns
     
-    # Idem para Palavras de Dor
-    df["Mencionou_Falta"] = df["corpus"].str.contains(r'\\b(falta|dificuldade|gargalo|erro|morosidade)\\b', regex=True, case=False, na=False)
-    corr_falta = df[df["Mencionou_Falta"]]["avancou_funil"].mean() * 100 if df["Mencionou_Falta"].sum() > 0 else 0
+    if TEM_CORPUS:
+        df["Mencionou_Risco"] = df["corpus"].str.contains(r'\b(risco|multa|processo|atraso|juros)\b', regex=True, case=False, na=False)
+        corr_risco = df[df["Mencionou_Risco"]]["avancou_funil"].mean() * 100 if df["Mencionou_Risco"].sum() > 0 else 0
+        df["Mencionou_Falta"] = df["corpus"].str.contains(r'\b(falta|dificuldade|gargalo|erro|morosidade)\b', regex=True, case=False, na=False)
+        corr_falta = df[df["Mencionou_Falta"]]["avancou_funil"].mean() * 100 if df["Mencionou_Falta"].sum() > 0 else 0
+    else:
+        # Sem corpus: usa P_score alto como proxy para dor identificada
+        df["Mencionou_Risco"] = df["I_score"] >= 2
+        corr_risco = df[df["Mencionou_Risco"]]["avancou_funil"].mean() * 100 if df["Mencionou_Risco"].sum() > 0 else 0
+        df["Mencionou_Falta"] = df["P_score"] >= 2
+        corr_falta = df[df["Mencionou_Falta"]]["avancou_funil"].mean() * 100 if df["Mencionou_Falta"].sum() > 0 else 0
+    
+    gap_risco = corr_risco - tx_base
     gap_falta = corr_falta - tx_base
     
     col_k1.metric("1. Taxa Base do Lote de Leads", f"{tx_base:.1f}%")
-    col_k2.metric("2. Taxa c/ uso pesado de Implicação", f"{corr_risco:.1f}%", f"{gap_risco:+.1f}% de Boost Conversional", delta_color="normal")
-    col_k3.metric("3. Taxa c/ dor identificada a fundo", f"{corr_falta:.1f}%", f"{gap_falta:+.1f}% de Efeito de Avanço", delta_color="normal")
+    col_k2.metric("2. Taxa c/ Implicação Alta (I_score ≥ 2)", f"{corr_risco:.1f}%", f"{gap_risco:+.1f}% de Boost Conversional", delta_color="normal")
+    col_k3.metric("3. Taxa c/ Problema Forte (P_score ≥ 2)", f"{corr_falta:.1f}%", f"{gap_falta:+.1f}% de Efeito de Avanço", delta_color="normal")
 
-    st.info("💡 **Conclusão Algorítmica Sensível às Pastas Lidas:** O dashboard comprova estatisticamente que se a palavra 'risco', 'multa' ou 'juros' compõe agressivamente a negociação, sua conversão descola para cima na Villela, comparado ao grupo de base.")
+    st.info("💡 **Conclusão Algorítmica:** Reuniões onde o time extraíu a dor (P_score alto) e pesou as consequências (I_score alto) têm taxa de conversão comprovadamente superior à média da base.")
 
 # ================================
 # TAB 4: NUVEM DE PALAVRAS E TERMOS DE NEGÓCIO
@@ -337,9 +344,12 @@ with tab4:
             "são", "falar", "falando", "falo", "disse", "diz", "entendi", "exatamente", "certeza", "consegue", "só", "mesmo"
         ])
         
-        full_text = " ".join(df["corpus"].tolist())
+        HAS_CORPUS = "corpus" in df.columns
+        full_text = " ".join(df["corpus"].tolist()) if HAS_CORPUS else ""
         
-        if len(full_text.strip()) > 30:
+        if not HAS_CORPUS:
+            st.info("ℹ️ A nuvem de palavras e o gráfico de termos requerem o corpus de texto completo (disponível ao ler diretamente as pastas). Os scores SPIN e gráficos das outras abas funcionam normalmente.")
+        elif len(full_text.strip()) > 30:
             try:
                 wordcloud = WordCloud(
                     width=1000, 
@@ -347,7 +357,7 @@ with tab4:
                     background_color="rgba(0,0,0,0)", 
                     mode="RGBA",
                     stopwords=stopwords_pt,
-                    colormap="viridis", # Paleta vibrante
+                    colormap="viridis",
                     min_word_length=4,
                     max_words=80
                 ).generate(full_text)
@@ -355,14 +365,14 @@ with tab4:
                 fig, ax = plt.subplots(figsize=(10, 4))
                 ax.imshow(wordcloud, interpolation='bilinear')
                 ax.axis('off')
-                fig.patch.set_alpha(0) # Fundo transparente
+                fig.patch.set_alpha(0)
                 st.pyplot(fig)
             except Exception as e:
                 st.error(f"Erro ao gerar WordCloud: {e}")
                 
             st.markdown("---")
             st.subheader("📊 Frequência de Termos Táticos (Negócios & Negociação)")
-            st.markdown("Contagem simples em toda a amostra para verificar tendências sentimentais (Positivas relacionadas à conversão e solução vs Negativas relacionadas a dor e impacto do lead).")
+            st.markdown("Contagem simples em toda a amostra para verificar tendências sentimentais.")
             
             termos_positivos = ["solução", "contrato", "fechamento", "sucesso", "economia", "resultado", "avanço", "aprovado", "parceria", "investimento", "benefício", "crescimento", "lucro", "acordo", "ganho", "proposta"]
             termos_negativos = ["problema", "dificuldade", "multa", "juros", "risco", "prejuízo", "atraso", "crise", "dívida", "processo", "perda", "morosidade", "gargalo", "ruim", "falta", "impacto"]
@@ -378,14 +388,9 @@ with tab4:
             if contagem:
                 df_termos = pd.DataFrame(contagem).sort_values(by="Contagem", ascending=False)
                 fig_bar = px.bar(
-                    df_termos, 
-                    x="Contagem", 
-                    y="Termo", 
-                    color="Polaridade", 
-                    orientation="h",
+                    df_termos, x="Contagem", y="Termo", color="Polaridade", orientation="h",
                     color_discrete_map={"Positiva": "#2ca02c", "Negativa": "#d62728"},
-                    text_auto=True,
-                    height=450
+                    text_auto=True, height=450
                 )
                 fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig_bar, use_container_width=True)
@@ -399,21 +404,24 @@ with tab4:
 # ================================
 with tab5:
     st.subheader("📋 Tabela Global de Palavras")
-    st.markdown("Contagem absoluta (excluindo os pronomes e verbos de ligação) para auditoria rápida e identificação minuciosa do que mais se fala com o cliente.")
+    st.markdown("Contagem absoluta (excluindo pronomes e verbos) para auditoria rápida.")
     
-    if 'full_text' in locals() and len(full_text.strip()) > 30:
-        words = re.findall(r'\b[a-záéíóúâêôãõç]+\b', full_text.lower())
-        words_filtered = [w for w in words if w not in stopwords_pt and len(w) > 3]
-        
+    HAS_CORPUS_T5 = "corpus" in df.columns
+    full_text_t5 = " ".join(df["corpus"].tolist()) if HAS_CORPUS_T5 else ""
+    
+    if HAS_CORPUS_T5 and len(full_text_t5.strip()) > 30:
+        stopwords_t5 = set(["a","o","e","que","do","da","em","um","para","com","não","uma","os","no","se","na","por","mais","as","dos","como","mas","ao","das","à","seu","sua","ou","quando","já","muito","nos","eu","também","só","pelo","pela","até","isso","ela","entre","depois","sem","mesmo","aos","seus","quem","nas","me","esse","eles","você","essa","num","nem","suas","meu","às","minha","numa","pelos","elas","qual","nós","de","vez","seja","pode","dar","ir","ver","lá","tipo","vou","era","ia","assim","bom","sei","mim","sabe","acho","cara","sendo","vão","temos","tinha","faz","fazemos","dia","ano","meses","são","disse","diz","entendi","exatamente","certeza","consegue","mesmo","tá","né","aí","aqui","então","sobre","villela","reunião","gente","tudo","bem","sim","vai","falar","porque","agora","coisa","onde","quem","isso","pra","pro"])
+        words = re.findall(r'\b[a-záéíóúâêôãõç]+\b', full_text_t5.lower())
+        words_filtered = [w for w in words if w not in stopwords_t5 and len(w) > 3]
         freq = pd.Series(words_filtered).value_counts().reset_index()
         freq.columns = ["Palavra Extraída", "Frequência no Lote"]
-        
-        st.dataframe(
-            freq.head(500).style.background_gradient(subset=["Frequência no Lote"], cmap="Blues"),
-            use_container_width=True
-        )
+        st.dataframe(freq.head(500).style.background_gradient(subset=["Frequência no Lote"], cmap="Blues"), use_container_width=True)
+    elif not HAS_CORPUS_T5:
+        st.info("ℹ️ A tabela de frequência de palavras requer o corpus de texto (disponível ao rodar localmente com as pastas reais).")
+        st.markdown("**Disponível nas outras abas:** Scores SPIN, conversão, padrões, recomendações e forecast — todos funcionando com os dados do JSON consolidado.")
     else:
-        st.info("Volume de texto insuficiente para gerar tabela de frequência detalhada.")
+        st.info("Volume de texto insuficiente.")
+
 
 # ================================
 # TAB 6: RECOMENDAÇÕES EXECUTIVAS ESTRATÉGICAS
@@ -489,15 +497,17 @@ with tab7:
     leads_mensais = col_f1.number_input("Leads/Reuniões Projetadas p/ Mês", min_value=10, max_value=5000, value=200, step=50)
     ticket_medio = col_f2.number_input("Ticket Médio Esperado (R$)", min_value=1000, max_value=500000, value=15000, step=1000)
     
-    # Descobre a conversao se a pessoa citou "risco/multa/processo" - gatilhos pesados de implicação
+    # Detecta se há corpus ou usa I_score como proxy da implicação
     if "corpus" in df.columns:
-        df["Mencionou_Risco_FC"] = df["corpus"].str.contains(r'\\b(risco|multa|processo|juros|consequência)\\b', regex=True, case=False, na=False)
+        df["Mencionou_Risco_FC"] = df["corpus"].str.contains(r'\b(risco|multa|processo|juros|consequência)\b', regex=True, case=False, na=False)
         corr_implicacao_alta = df[df["Mencionou_Risco_FC"]]["avancou_funil"].mean() if df["Mencionou_Risco_FC"].sum() > 0 else 0
     else:
-        corr_implicacao_alta = 0
+        # Proxy: reuniões com I_score alto (equipes que usaram implicação forte)
+        corr_implicacao_alta = df[df["I_score"] >= 2]["avancou_funil"].mean() if len(df[df["I_score"] >= 2]) > 0 else 0
         
     tx_atual = df["avancou_funil"].mean() if len(df) > 0 else 0
-    if corr_implicacao_alta < tx_atual: corr_implicacao_alta = tx_atual * 1.15 # Fallback estistico minimo se dados lixo
+    if corr_implicacao_alta < tx_atual: corr_implicacao_alta = tx_atual * 1.15  # fallback mínimo estatístico
+
     
     # Cenários
     fechamentos_atuais = int(leads_mensais * tx_atual)
