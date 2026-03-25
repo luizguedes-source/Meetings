@@ -286,7 +286,7 @@ else:
 
 
 # Layout Principal
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(
     [
         "📊 Visão Geral",
         "🛠️ Análise Isolada",
@@ -296,6 +296,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
         "🎯 Recomendações",
         "📈 Forecast",
         "🎤 Modelos de Speech",
+        "📋 Resumo Executivo",
     ]
 )
 
