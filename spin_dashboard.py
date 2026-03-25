@@ -154,24 +154,33 @@ def load_meetings_data(base_path, limit=250):
 # SIDEBAR
 # ================================
 st.sidebar.header("📁 Configurações")
-st.sidebar.markdown("Local onde ficam as pastas zipadas e extraídas (`.../out_meetgeek-XXX/.../meetings`).")
 
-# Apontando para a raíz diretamente (ex: G:/Villela Arquivos)
+# Detecta se o JSON consolidado existe
+USANDO_JSON_CONSOLIDADO = os.path.exists(DEMO_JSON_PATH)
+
+if USANDO_JSON_CONSOLIDADO:
+    st.sidebar.success("✅ **Base Consolidada Detectada**  \n`meetings_sample.json`")
+    st.sidebar.markdown("Para reprocessar as pastas brutas, altere o diretório abaixo e aumente a amostra.")
+else:
+    st.sidebar.markdown("Local onde ficam as pastas extraídas (`.../out_meetgeek-XXX/.../meetings`).")
+
 default_path = "g:/Villela Arquivos"
 base_dir = st.sidebar.text_input("Diretório Raiz das Reuniões", value=default_path)
 amostra = st.sidebar.slider("Reuniões Analisadas (Amostra iterativa)", min_value=10, max_value=2000, value=250, step=10)
 
-# Carrega Base
+# Carrega Base: prefere pastas reais, cai no JSON se vazio
 df = load_meetings_data(base_dir, limit=amostra)
 
 if df.empty:
-    st.warning(f"⚠️ Nenhuma pasta de reunião encontrada em `{base_dir}`. Carregando dados de demonstração (`meetings_sample.json`)...")
     df = load_demo_data()
     if df.empty:
-        st.error("Arquivo `meetings_sample.json` também não encontrado. Verifique o diretório.")
+        st.error("❌ Nenhum dado encontrado. Verifique o diretório ou gere o `meetings_sample.json` com `export_meetings_json.py`.")
         st.stop()
     else:
-        st.info("📌 **Modo Demo Ativo** — Os dados exibidos são fictícios para fins de demonstração. Aponte o diretório correto para carregar reuniões reais.")
+        st.sidebar.info(f"📊 **{len(df)} reuniões** carregadas do consolidado JSON.")
+else:
+    st.sidebar.info(f"📂 **{len(df)} reuniões** carregadas das pastas.")
+
 
     
 # Layout Principal
