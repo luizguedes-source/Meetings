@@ -8,11 +8,12 @@ O objetivo desse projeto é **transformar reunião em dado mensurável**, identi
 
 ### O que o dashboard faz:
 - **SPIN Score** (0–10) para cada reunião
+- **Funil Comercial Completo** (Conversão de R1 → R2 → Proposta → Assinatura)
 - **Correlação** com avanço no funil de vendas
 - **Padrões** de comportamento de alta vs. baixa conversão
+- **Ranking de Closers** cruzando volume, qualidade técnica e velocidade
 - **Nuvem de Palavras** dos termos mais usados nas negociações
-- **Tabela de Frequência** de palavras de negócio
-- **Recomendações estratégicas** adaptadas ao perfil real da equipe
+- **Recomendações estratégicas e Resumo Executivo** adaptadas ao perfil real da equipe
 - **Forecast Comercial** com cenário atual vs. cenário otimizado
 
 ---
@@ -35,8 +36,8 @@ streamlit run spin_dashboard.py
 
 ## 📁 Estrutura de Dados
 
-### Modo Demo (GitHub)
-O dashboard inclui `meetings_sample.json` com 20 reuniões fictícias para demonstração. Ao rodar sem apontar uma pasta válida de reuniões reais, o **Modo Demo** é ativado automaticamente.
+### Base Consolidada (JSON)
+O dashboard inclui um diretório unificado `meetings_sample.json`, atuando como cache consolidado de até 2000 agendas capturadas. Ele permite que as análises de conversão e a ferramenta rodem em nuvem ou localmente com dados reais, sem precisar re-processar as pastas brutas individualmente.
 
 ### Modo Real (Produção)
 O dashboard lê as pastas extraídas do MeetGeek no formato:
@@ -88,6 +89,20 @@ Diretório Raiz: C:/SuaPasta
 | 📋 Frequência | Contagem de palavras relevantes |
 | 🎯 Recomendações | Plano de ação gerado dinamicamente |
 | 📈 Forecast | Projeção de receita por cenário |
+| 🎤 Modelos de Speech | Sugestões de scripts para contornar objeções |
+| 📄 Resumo Executivo | Relatório narrativo consolidado de 1 página |
+| 🏆 Funil Comercial | Diagnóstico de conversão (R1-Assinatura) e Ranking de Equipe |
+
+---
+
+## 📓 Ciência de Dados & Integração Kaggle
+
+Além do Dashboard interativo, o repositório conta com **Jupyter Notebooks** independentes focados em análise estática e relatórios avançados para Kaggle ou corporativo:
+
+- **`04-spin-analysis-v2.ipynb`**: Análise descritiva geral das reuniões, NLP básico e geração do consolidado.
+- **`05-funil-comercial-avancado.ipynb`**: Focado estritamente no diagnóstico de vazamento de funil, com visualizações de altíssimo nível (com _Storytelling Annotations_ da Plotly) e um Resumo Executivo diagramado em HTML.
+
+> O caminho padrão dos datasets dentro desses notebooks está mapeado para rodar perfeitamente via Kaggle Cloud Dataset v4 (`/kaggle/input/datasets/henriqueguedes1977/meetings-sample-v4/meetings_sample.json`).
 
 ---
 
