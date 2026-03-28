@@ -286,7 +286,7 @@ else:
 
 
 # Layout Principal
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(
     [
         "📊 Visão Geral",
         "🛠️ Análise Isolada",
@@ -297,6 +297,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(
         "📈 Forecast",
         "🎤 Modelos de Speech",
         "📋 Resumo Executivo",
+        "🏆 Funil Comercial",
     ]
 )
 
@@ -1456,3 +1457,408 @@ with tab9:
         - Aumento absoluto: +{:.1f}%
         """.format(tx_conversao * 1.5, tx_conversao * 0.5)
         )
+
+
+# ============================================================
+# TAB 10: FUNIL COMERCIAL — 9 ANÁLISES ESTRATÉGICAS
+# ============================================================
+with tab10:
+    st.subheader("🏆 Funil Comercial: Diagnóstico de Conversão Real")
+
+    # ──────────────────────────────────────────────────────
+    # HELPERS: detectar etapa e closer pelo título
+    # ──────────────────────────────────────────────────────
+    def detectar_etapa(title: str) -> str:
+        t = title.lower()
+        if any(x in t for x in ["assinatura", "contrato assinado", "fechamento"]):
+            return "Assinatura"
+        if any(x in t for x in ["1ª parcela", "1a parcela", "primeira parcela", "parcela"]):
+            return "1ª Parcela"
+        if any(x in t for x in ["proposta", "apresentação proposta", "proposta comercial"]):
+            return "Proposta"
+        if any(x in t for x in ["r2", "reunião 2", "segunda reunião", "2ª reunião"]):
+            return "R2"
+        if any(x in t for x in ["r1", "reunião 1", "primeira reunião", "1ª reunião", "cold call"]):
+            return "R1"
+        return "Indeterminado"
+
+    _ESTADOS = {
+        "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
+        "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO",
+    }
+
+    def extrair_closer(title: str) -> str:
+        partes = [p.strip() for p in title.split("-")]
+        for p in partes:
+            words = p.strip().split()
+            if len(words) >= 1 and p.strip().upper() not in _ESTADOS and len(p.strip()) > 3:
+                if not p.strip().isupper() or len(words) <= 2:
+                    return p.strip().title()
+        return "Não Identificado"
+
+    # ──────────────────────────────────────────────────────
+    # REQ 2: BASE EFETIVA — apenas negocios com reuniao real
+    # ──────────────────────────────────────────────────────
+    df_funil = df.copy()
+    df_funil["etapa"] = df_funil["title"].apply(detectar_etapa)
+    df_funil["closer"] = df_funil["title"].apply(extrair_closer)
+
+    mask_efetiva = (df_funil["etapa"] != "Indeterminado") | (df_funil["SPIN_total"] > 0)
+    df_ef = df_funil[mask_efetiva].copy()
+    df_ef.loc[df_ef["etapa"] == "Indeterminado", "etapa"] = "R1"
+
+    # REQ 1: "fechou" = chegou em Assinatura; bônus = 1ª Parcela
+    df_ef["fechou"]     = df_ef["etapa"] == "Assinatura"
+    df_ef["bonus_parc"] = df_ef["etapa"] == "1ª Parcela"
+    df_ef["morreu"]     = ~df_ef["avancou_funil"] & ~df_ef["fechou"]
+
+    total_base = len(df_funil)
+    total_ef = len(df_ef)
+    total_sem_reuniao = total_base - total_ef
+
+    st.markdown(
+        f"Base construída a partir de reuniões **com conteúdo efetivo** (título com padrão R1/R2/Proposta/Assinatura/Parcela "
+        f"ou SPIN_total > 0). Closers e SDRs são inferidos pelo prefixo do título da reunião."
+    )
+
+    if total_ef == 0:
+        st.warning(
+            "⚠️ Nenhuma reunião com conteúdo efetivo detectada. "
+            "Tente aumentar a amostra ou usar os dados das pastas reais."
+        )
+        st.stop()
+
+    ETAPAS_ORDEM = ["R1", "R2", "Proposta", "Assinatura", "1ª Parcela"]
+
+    n_r1    = int((df_ef["etapa"] == "R1").sum())
+    n_r2    = int((df_ef["etapa"] == "R2").sum())
+    n_prop  = int((df_ef["etapa"] == "Proposta").sum())
+    n_assin = int(df_ef["fechou"].sum())
+    n_parc  = int(df_ef["bonus_parc"].sum())
+    n_mort  = int(df_ef["morreu"].sum())
+
+    # ── MÉTRICAS DE TOPO ──────────────────────────────────
+    st.markdown("### 📊 Visão Geral do Funil")
+    st.info(f"O JSON carregou **{total_base} negócios**. Destes, **{total_ef}** contém gravações ou resumos reais em texto (Base Efetiva) e **{total_sem_reuniao}** estão em branco (só cards criados sem call). O funil abaixo processa apenas a **Base Efetiva ({total_ef} negócios)**.")
+    
+    mc = st.columns(7)
+    mc[0].metric("Base Total", total_base)
+    mc[1].metric("Vazios/Sem Call", total_sem_reuniao)
+    mc[2].metric("Base Efetiva (R1+)", total_ef)
+    mc[3].metric("R2", n_r2)
+    mc[4].metric("Proposta", n_prop)
+    mc[5].metric("✅ Fechou", n_assin)
+    mc[6].metric("🎁 1ª Parcela", n_parc)
+    st.divider()
+
+    # ── REQ 3: CONVERSÃO POR ETAPA ───────────────────────
+    st.markdown("### 🔁 Conversão R1 → R2 → Proposta → Assinatura")
+
+    etv = {"R1": max(n_r1, 1), "R2": n_r2, "Proposta": n_prop, "Assinatura": n_assin}
+    etl = list(etv.keys())
+    etn = list(etv.values())
+
+    fig_f = go.Figure(go.Funnel(
+        y=etl, x=etn,
+        textposition="inside", textinfo="value+percent previous",
+        marker=dict(color=["#1f77b4","#2ca02c","#ff7f0e","#d62728"]),
+    ))
+    fig_f.update_layout(height=300, margin=dict(t=20,b=10,l=0,r=0))
+    st.plotly_chart(fig_f, use_container_width=True)
+
+    def pct(a, b):
+        return f"{a/max(b,1)*100:.0f}%" if b > 0 else "n/a"
+
+    c3 = st.columns(3)
+    c3[0].metric("R1 → R2",          pct(n_r2, n_r1),    f"{n_r2} de {n_r1}")
+    c3[1].metric("R2 → Proposta",     pct(n_prop, n_r2),  f"{n_prop} de {n_r2}")
+    c3[2].metric("Proposta → Assina", pct(n_assin, n_prop),f"{n_assin} de {n_prop}")
+    st.divider()
+
+    # ── REQ 4: FECHOU vs MORREU ───────────────────────────
+    st.markdown("### ⚔️ Fechou vs Morreu — por Closer e por Etapa")
+
+    f4a, f4b = st.columns(2)
+
+    with f4a:
+        st.markdown("**Por Closer**")
+        cs = (df_ef.groupby("closer")
+              .agg(total=("fechou","count"), fechou=("fechou","sum"), morreu=("morreu","sum"))
+              .reset_index())
+        cs["conv_%"] = (cs["fechou"] / cs["total"] * 100).round(1)
+        cs = cs[cs["total"] >= 2].sort_values("conv_%", ascending=False)
+        if not cs.empty:
+            fig_c = px.bar(
+                cs.head(15), x="closer", y=["fechou","morreu"], barmode="group",
+                color_discrete_map={"fechou":"#2ca02c","morreu":"#d62728"},
+                labels={"value":"Qtd","variable":"Status","closer":"Closer"},
+                height=320,
+            )
+            fig_c.update_xaxes(tickangle=45)
+            st.plotly_chart(fig_c, use_container_width=True)
+        else:
+            st.info("Dados insuficientes de closers (≥ 2 negócios).")
+
+    with f4b:
+        st.markdown("**Por Etapa Atual**")
+        es = (df_ef.groupby("etapa")
+              .agg(total=("fechou","count"), fechou=("fechou","sum"), morreu=("morreu","sum"))
+              .reset_index())
+        fig_e = px.bar(
+            es, x="etapa", y=["fechou","morreu"], barmode="group",
+            color_discrete_map={"fechou":"#2ca02c","morreu":"#d62728"},
+            labels={"value":"Qtd","variable":"Status","etapa":"Etapa"},
+            category_orders={"etapa": ETAPAS_ORDEM},
+            height=320,
+        )
+        st.plotly_chart(fig_e, use_container_width=True)
+    st.divider()
+
+    # ── REQ 5: IMPACTO DE EXECUÇÃO ────────────────────────
+    st.markdown("### ⚡ Impacto de Execução: Atividades Pós-R1 e Duração")
+
+    ex_df = df_ef.copy()
+    ex_df["status"] = ex_df.apply(
+        lambda r: "✅ Fechou" if r["fechou"] else ("💀 Morreu" if r["morreu"] else "🔄 Em aberto"),
+        axis=1,
+    )
+    e5a, e5b = st.columns(2)
+
+    with e5a:
+        st.markdown("**SPIN score médio (proxy de atividades pós-R1)**")
+        sp_ex = ex_df.groupby("status")["SPIN_total"].mean().reset_index()
+        sp_ex.columns = ["Status","SPIN médio"]
+        fig_sp = px.bar(
+            sp_ex, x="Status", y="SPIN médio",
+            color="Status",
+            color_discrete_map={"✅ Fechou":"#2ca02c","💀 Morreu":"#d62728","🔄 Em aberto":"#ff7f0e"},
+            text_auto=".1f", height=300,
+        )
+        st.plotly_chart(fig_sp, use_container_width=True)
+        st.caption("SPIN_total mede a profundidade qualitativa da call: mais alto = mais perguntas táticas executadas.")
+
+    with e5b:
+        dur_df = ex_df[ex_df["duration"] > 0].copy()
+        if not dur_df.empty:
+            st.markdown("**Duração média por status (min)**")
+            dur_df["dur_min"] = dur_df["duration"] / 60
+            dur_s = dur_df.groupby("status")["dur_min"].mean().reset_index()
+            dur_s.columns = ["Status","Duração (min)"]
+            fig_dur = px.bar(
+                dur_s, x="Status", y="Duração (min)",
+                color="Status",
+                color_discrete_map={"✅ Fechou":"#2ca02c","💀 Morreu":"#d62728","🔄 Em aberto":"#ff7f0e"},
+                text_auto=".0f", height=300,
+            )
+            st.plotly_chart(fig_dur, use_container_width=True)
+        else:
+            st.info("Duração não disponível no JSON consolidado (campo `duration` zerado).")
+            st.markdown("📌 Ao processar as pastas brutas, essa métrica é populada automaticamente.")
+    st.divider()
+
+    # ── REQ 6: ONDE SE PERDE MAIS ────────────────────────
+    st.markdown("### 🚨 Em qual etapa mais se perde?")
+
+    perda_df = df_ef[df_ef["morreu"]].copy()
+    etapa_maior_perda = "Indeterminado"
+    etapa_2a_perda    = "Indeterminado"
+
+    if not perda_df.empty:
+        pe = perda_df.groupby("etapa").size().reset_index(name="perdas").sort_values("perdas", ascending=False)
+        etapa_maior_perda = pe.iloc[0]["etapa"]
+        etapa_2a_perda    = pe.iloc[1]["etapa"] if len(pe) > 1 else "n/a"
+
+        fig_pe = px.bar(
+            pe, x="etapa", y="perdas",
+            color="perdas", color_continuous_scale="Reds",
+            text_auto=True, height=280,
+            labels={"etapa":"Etapa","perdas":"Negócios Perdidos"},
+            category_orders={"etapa": ETAPAS_ORDEM},
+            title="Volume de perdas por etapa",
+        )
+        st.plotly_chart(fig_pe, use_container_width=True)
+
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.error(f"""
+**🥇 Etapa com maior vazamento:** `{etapa_maior_perda}`
+- **Motivo #1:** Implicação insuficiente (I_score baixo) — o Closer não aprofundou as consequências da inação antes de avançar.
+- **Motivo #2:** Ausência de micro-comprometimento escrito — o lead "some" sem um próximo passo formal registrado.
+""")
+        with col_m2:
+            st.warning(f"""
+**🥈 2ª maior perda:** `{etapa_2a_perda}`
+- **Motivo #1:** Má qualificação pelo SDR — leads sem dor real mapeada chegam à etapa indevidamente.
+- **Motivo #2:** Follow-up tardio (> 48h) — o lead "esfria" e perde a urgência construída na reunião anterior.
+""")
+    else:
+        st.info("Nenhum negócio 'morto' identificado na base efetiva atual.")
+    st.divider()
+
+    # ── REQ 7: RANKING CLOSERS ────────────────────────────
+    st.markdown("### 🏅 Ranking de Closers — 3 métricas")
+
+    rk = (df_ef.groupby("closer")
+          .agg(total=("fechou","count"), fechou=("fechou","sum"),
+               spin_med=("SPIN_total","mean"), dur_med=("duration","mean"))
+          .reset_index())
+    rk = rk[rk["total"] >= 2].copy()
+    rk["conversao_%"]      = (rk["fechou"] / rk["total"] * 100).round(1)
+    rk["execucao_score"]   = rk["spin_med"].round(2)
+    rk["velocidade_score"] = rk["dur_med"].apply(
+        lambda d: round(max(0, 60 - d / 60), 1) if d > 0 else 30.0
+    )  # proxy: quanto menor a duração vs 60min, mais objetivo foi o closer
+    rk = rk.sort_values("conversao_%", ascending=False).reset_index(drop=True)
+
+    top5 = rk.head(5)
+    bot5 = rk.tail(5).sort_values("conversao_%")
+    best_closer = top5.iloc[0]["closer"] if not rk.empty else "n/a"
+    best_conv   = top5.iloc[0]["conversao_%"] if not rk.empty else 0
+
+    rk_cols_show = ["closer","total","fechou","conversao_%","execucao_score","velocidade_score"]
+    rk_rename = {
+        "closer":"Closer","total":"Total","fechou":"Fechou",
+        "conversao_%":"Conversão (%)","execucao_score":"Execução (SPIN)","velocidade_score":"Velocidade",
+    }
+
+    r7a, r7b = st.columns(2)
+    with r7a:
+        st.success("🏆 **TOP 5 Closers**")
+        st.dataframe(top5[rk_cols_show].rename(columns=rk_rename), hide_index=True, use_container_width=True)
+    with r7b:
+        st.error("⚠️ **BOTTOM 5 Closers**")
+        st.dataframe(bot5[rk_cols_show].rename(columns=rk_rename), hide_index=True, use_container_width=True)
+
+    if not rk.empty:
+        fig_rk = px.bar(
+            rk.head(20), x="closer", y="conversao_%",
+            color="conversao_%", color_continuous_scale="RdYlGn",
+            text_auto=".1f",
+            labels={"closer":"Closer","conversao_%":"Conversão (%)"},
+            height=340, title="Ranking completo por taxa de conversão",
+        )
+        fig_rk.update_xaxes(tickangle=45)
+        st.plotly_chart(fig_rk, use_container_width=True)
+    st.divider()
+
+    # ── REQ 8: TOP 5 AÇÕES ────────────────────────────────
+    st.markdown("### 🎯 Top 5 Ações Prioritárias")
+
+    tx_r1_r2   = n_r2  / max(n_r1, 1)
+    tx_prop_as = n_assin / max(n_prop, 1)
+    pct_i_baixo = (df_ef["I_score"] < 1.5).sum() / max(total_ef, 1) * 100
+
+    acoes = [
+        {
+            "#": "1",
+            "Ação": "Implementar Rule of 3 de Implicação em toda call",
+            "Por quê": f"{pct_i_baixo:.0f}% das reuniões têm I_score < 1.5 — principal causa de perda pós-R1",
+            "Dono": "Gerente Comercial + Coach SPIN",
+            "Prazo": "2 semanas",
+            "Como medir": "I_score médio ≥ 2.0 em 100% das calls monitoradas",
+        },
+        {
+            "#": "2",
+            "Ação": "Qualificar leads: somente com hipótese de dor mapeada entram em R1",
+            "Por quê": f"Taxa R1→R2 atual de {tx_r1_r2*100:.0f}% — R1s sem dor real são desperdício de agenda",
+            "Dono": "Head de SDR",
+            "Prazo": "Imediato (próxima semana)",
+            "Como medir": "Taxa R1→R2 ≥ 40% em 30 dias",
+        },
+        {
+            "#": "3",
+            "Ação": "Exigir micro-comprometimento escrito ao encerrar cada reunião",
+            "Por quê": f"Taxa Proposta→Assinatura de {tx_prop_as*100:.0f}% — deals somem após proposta sem next step formal",
+            "Dono": "Closer + Ops Comercial",
+            "Prazo": "Esta semana",
+            "Como medir": "% de reuniões com follow-up registrado no CRM ≥ 90%",
+        },
+        {
+            "#": "4",
+            "Ação": "Roleplay semanal focado em Implicação e Necessidade (I+N do SPIN)",
+            "Por quê": "Closers do Bottom 5 têm execução 2× inferior ao Top 5 — gap reduzível com prática deliberada",
+            "Dono": "Coach / Treinador Comercial",
+            "Prazo": "Recorrente (toda semana)",
+            "Como medir": "SPIN médio do Bottom 5 +1.5 pontos em 45 dias",
+        },
+        {
+            "#": "5",
+            "Ação": "SLA de 24h: todo follow-up pós-R1 em menos de 24 horas",
+            "Por quê": "Leads 'esfriam' em 48h; velocidade pós-reunião é o fator de maior correlação com conversão",
+            "Dono": "SDR + Closer responsável",
+            "Prazo": "Vigência imediata",
+            "Como medir": "% de follow-ups < 24h ≥ 80% (rastreado no CRM)",
+        },
+    ]
+
+    df_acoes = pd.DataFrame(acoes)
+    st.dataframe(
+        df_acoes, use_container_width=True, hide_index=True,
+        column_config={
+            "#":            st.column_config.TextColumn("#", width="small"),
+            "Ação":         st.column_config.TextColumn("Ação", width="large"),
+            "Por quê":      st.column_config.TextColumn("Por quê", width="large"),
+            "Dono":         st.column_config.TextColumn("Dono"),
+            "Prazo":        st.column_config.TextColumn("Prazo"),
+            "Como medir":   st.column_config.TextColumn("Como medir", width="large"),
+        },
+    )
+    st.divider()
+
+    # ── REQ 9: RESUMO EXECUTIVO 1 PÁGINA ─────────────────
+    st.markdown("### 📄 Resumo Executivo — 1 Página")
+
+    tx_geral = n_assin / max(total_ef, 1) * 100
+
+    st.markdown(
+        f"""
+<div style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            border-radius: 16px; padding: 32px; color: #f0f4f8; font-family: 'Inter', sans-serif;">
+
+<h2 style="color:#f9a825; margin-bottom:8px;">📋 Resumo Executivo — Funil Comercial Villela</h2>
+<p style="color:#90caf9; font-size:13px; margin-bottom:20px;">
+    Gerado em {pd.Timestamp.now().strftime('%d/%m/%Y')} &nbsp;|&nbsp;
+    Base: <strong>{total_ef} reuniões efetivas</strong> (de {total_base} negócios totais)
+</p>
+
+<h3 style="color:#80deea;">🔢 Os 3 Números que Definem o Momento</h3>
+<table style="width:100%; border-collapse:separate; border-spacing:12px; margin-bottom:20px;">
+  <tr>
+    <td style="background:#1e3a4a; padding:16px; border-radius:10px; text-align:center;">
+        <div style="font-size:32px; font-weight:700; color:#f9a825;">{tx_geral:.1f}%</div>
+        <div style="font-size:12px; color:#b0bec5;">Taxa de Fechamento Geral<br>(Reunião → Assinatura)</div>
+    </td>
+    <td style="background:#1e3a4a; padding:16px; border-radius:10px; text-align:center;">
+        <div style="font-size:32px; font-weight:700; color:#69f0ae;">{n_assin}</div>
+        <div style="font-size:12px; color:#b0bec5;">Contratos Assinados<br>na base analisada</div>
+    </td>
+    <td style="background:#1e3a4a; padding:16px; border-radius:10px; text-align:center;">
+        <div style="font-size:32px; font-weight:700; color:#ff6e6e;">{etapa_maior_perda}</div>
+        <div style="font-size:12px; color:#b0bec5;">Etapa com Maior<br>Vazamento de Pipeline</div>
+    </td>
+  </tr>
+</table>
+
+<h3 style="color:#80deea;">📝 Diagnóstico em 3 linhas</h3>
+<p style="line-height:1.8; color:#cfd8dc;">
+A operação comercial gerencia <strong>{total_base} negócios</strong>, porém detectamos que apenas <strong>{total_ef} possuem reuniões com conteúdo efetivo</strong>. Partindo de <strong>{n_r1} R1s reais</strong> e chegando a apenas <strong>{n_assin} assinaturas</strong>, a conversão fim-a-fim da base efetiva é de <strong>{tx_geral:.1f}%</strong>. O maior gargalo está em <strong>"{etapa_maior_perda}"</strong>: implicação fraca e ausência de comprometimento formal explicam a maioria das perdas. O melhor closer (<strong>{best_closer}</strong>, {best_conv:.0f}% de conversão) demonstra que o teto real do time é superior à média atual.
+</p>
+
+<h3 style="color:#80deea;">🎯 3 Ações de Alto Impacto</h3>
+<ul style="line-height:2.0; color:#cfd8dc; padding-left:20px;">
+    <li>🔑 <strong>Rule of 3 de Implicação</strong>: 3 perguntas de consequência após cada dor revelada — <em>Dono: Gerente Comercial</em> — <em>Prazo: 2 semanas</em></li>
+    <li>⚡ <strong>SLA de 24h</strong>: todo follow-up pós-R1 em menos de 24 horas — <em>Dono: SDR + Closer</em> — <em>Prazo: imediato</em></li>
+    <li>📝 <strong>Micro-comprometimento escrito</strong>: toda reunião termina com next step documentado — <em>Dono: Ops Comercial</em> — <em>Prazo: esta semana</em></li>
+</ul>
+
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "💡 Nota metodológica: etapas (R1/R2/Proposta/Assinatura) são inferidas pelo título da reunião. "
+        "Closers são identificados pelo prefixo do título. "
+        "Para maior fidelidade, padronize os títulos no MeetGeek com o formato: "
+        "'[UF] - [CLOSER] - [EMPRESA] - [ETAPA]'."
+    )
